@@ -377,7 +377,7 @@ def main():
                 print(f"Algorithm: {result['algorithm']}")
                 print(f"Timestamp: {result['timestamp']}")
                 print(f"\n📋 Signature (share this with verifier):")
-                print(f"{result['signature'][:80]}...")
+                print(result['signature'])
                 print(f"\n💾 Full signature length: {len(result['signature'])} characters")
                 print(f"\n📝 To verify, the receiver needs:")
                 print(f"   1. The original document")

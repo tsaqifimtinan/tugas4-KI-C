@@ -391,6 +391,90 @@ def main():
             signature = input("Enter the signature: ").strip()
             signer_id = input("Signer's Client ID: ").strip()
             
+            # TAMPERING OPTION
+            print("\n⚠️  TAMPERING TEST (Optional)")
+            print("Do you want to tamper with the document before verification?")
+            print("  1. No - Verify as is")
+            print("  2. Yes - Tamper with document (to test signature detection)")
+            
+            tamper_choice = input("\nChoose (1-2): ").strip()
+            
+            if tamper_choice == '2':
+                print("\n🔧 TAMPERING OPTIONS:")
+                print("  1. Add text to end")
+                print("  2. Change one character")
+                print("  3. Add/remove space")
+                print("  4. Change case of a character")
+                print("  5. Replace a word")
+                print("  6. Custom modification")
+                
+                method = input("\nChoose tampering method (1-6): ").strip()
+                original_doc = document
+                
+                if method == '1':
+                    tamper_text = input("Text to add: ").strip()
+                    document = document + tamper_text
+                    print(f"   Modified: Added '{tamper_text}' to end")
+                
+                elif method == '2':
+                    if len(document) > 0:
+                        try:
+                            idx = int(input(f"Character position to change (0-{len(document)-1}): "))
+                            if 0 <= idx < len(document):
+                                new_char = input(f"Replace '{document[idx]}' with: ").strip()
+                                if new_char:
+                                    document = document[:idx] + new_char[0] + document[idx+1:]
+                                    print(f"   Modified: Changed position {idx} from '{original_doc[idx]}' to '{new_char[0]}'")
+                        except ValueError:
+                            print("   Invalid position, no changes made")
+                
+                elif method == '3':
+                    space_choice = input("Add or remove space? (add/remove): ").strip().lower()
+                    if space_choice == 'add':
+                        try:
+                            idx = int(input(f"Position to add space (0-{len(document)}): "))
+                            document = document[:idx] + " " + document[idx:]
+                            print(f"   Modified: Added space at position {idx}")
+                        except ValueError:
+                            print("   Invalid position, no changes made")
+                    elif space_choice == 'remove':
+                        document = document.replace(" ", "", 1)
+                        print(f"   Modified: Removed first space")
+                
+                elif method == '4':
+                    if len(document) > 0:
+                        try:
+                            idx = int(input(f"Position to change case (0-{len(document)-1}): "))
+                            if 0 <= idx < len(document):
+                                if document[idx].islower():
+                                    document = document[:idx] + document[idx].upper() + document[idx+1:]
+                                    print(f"   Modified: Changed '{original_doc[idx]}' to uppercase")
+                                elif document[idx].isupper():
+                                    document = document[:idx] + document[idx].lower() + document[idx+1:]
+                                    print(f"   Modified: Changed '{original_doc[idx]}' to lowercase")
+                                else:
+                                    print(f"   Character at position {idx} is not a letter")
+                        except ValueError:
+                            print("   Invalid position, no changes made")
+                
+                elif method == '5':
+                    old_word = input("Word to replace: ").strip()
+                    new_word = input("Replace with: ").strip()
+                    if old_word in document:
+                        document = document.replace(old_word, new_word, 1)
+                        print(f"   Modified: Replaced '{old_word}' with '{new_word}'")
+                    else:
+                        print(f"   Word '{old_word}' not found in document")
+                
+                elif method == '6':
+                    print(f"\nOriginal: {original_doc}")
+                    document = input("Enter modified document: ").strip()
+                    print(f"   Modified to: {document}")
+                
+                print(f"\n📝 Original document: {original_doc}")
+                print(f"🔧 Tampered document: {document}")
+                print(f"⚠️  Signature verification should FAIL if document was modified!")
+            
             success, result = client.verify_document_signature(document, signature, signer_id)
             
             if success:
@@ -404,6 +488,9 @@ def main():
                     print(f"\n❌ SIGNATURE INVALID!")
                     print(f"   - The document may have been tampered with")
                     print(f"   - Or the signature doesn't match the signer")
+                    if tamper_choice == '2':
+                        print(f"\n✓ Tampering detected successfully!")
+                        print(f"   The signature verification correctly identified the modification.")
         
         elif choice == '5':
             # VIEW CERTIFICATE

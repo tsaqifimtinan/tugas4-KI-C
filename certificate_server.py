@@ -1,63 +1,65 @@
 """
-Certificate Authority (CA) Server
-----------------------------------
-Implements Public Key Infrastructure (PKI) for secure key distribution:
-- Issues digital certificates to clients
-- Signs certificates with CA's private key
-- Verifies certificate authenticity
-- Maintains certificate registry
+Certificate Authority (CA) Server - Manual RSA Implementation
+-------------------------------------------------------------
+Implements Public Key Infrastructure (PKI) for secure key distribution
+WITHOUT using external cryptography libraries.
+
+Features:
+- Manual RSA key generation
+- Manual SHA-256 hashing  
+- Manual digital signatures
+- Certificate issuance and verification
 """
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from Crypto.PublicKey import RSA
-from Crypto.Signature import pkcs1_15
-from Crypto.Hash import SHA256
-from Crypto.Cipher import PKCS1_OAEP
-import base64
 import json
 import uuid
 from datetime import datetime, timedelta
+
+# Import manual RSA implementation
+from rsa_signature import (
+    generate_rsa_keypair,
+    rsa_sign,
+    rsa_verify,
+    export_public_key,
+    export_private_key,
+    import_public_key,
+    import_private_key,
+    sign_certificate_data,
+    verify_certificate_signature,
+    sha256_manual
+)
 
 app = Flask(__name__)
 CORS(app)
 
 # ========================================
-# CA KEY PAIR GENERATION
+# CA KEY PAIR GENERATION (Manual RSA)
 # ========================================
-# Generate CA's own RSA key pair (2048-bit for security)
+print("="*60)
 print("Generating Certificate Authority (CA) key pair...")
-ca_key = RSA.generate(2048)
-ca_private_key = ca_key
-ca_public_key = ca_key.publickey()
+print("Using MANUAL RSA implementation (no external crypto library)")
+print("="*60)
+
+ca_keypair = generate_rsa_keypair(bits=1024)  # 1024-bit for reasonable speed
+ca_private_key = ca_keypair['private_key']
+ca_public_key = ca_keypair['public_key']
+
 print("✅ CA keys generated successfully!")
+print(f"   Key size: {ca_public_key['n'].bit_length()} bits")
+print(f"   Public exponent (e): {ca_public_key['e']}")
 
 # Certificate storage: {cert_id: certificate_data}
 certificates_db = {}
-# Client public keys: {client_id: public_key_pem}
+# Client public keys: {client_id: public_key_json}
 client_keys_db = {}
 
 # ========================================
 # HELPER FUNCTIONS
 # ========================================
 
-def sign_data(data, private_key):
-    """Sign data with private key using SHA256"""
-    h = SHA256.new(data.encode('utf-8'))
-    signature = pkcs1_15.new(private_key).sign(h)
-    return base64.b64encode(signature).decode('utf-8')
-
-def verify_signature(data, signature, public_key):
-    """Verify signature with public key"""
-    try:
-        h = SHA256.new(data.encode('utf-8'))
-        signature_bytes = base64.b64decode(signature)
-        pkcs1_15.new(public_key).verify(h, signature_bytes)
-        return True
-    except:
-        return False
-
-def create_certificate(client_id, client_public_key_pem, validity_days=365):
+def create_certificate(client_id, client_public_key_json, validity_days=365):
     """
     Create a digital certificate for a client
     
@@ -66,7 +68,7 @@ def create_certificate(client_id, client_public_key_pem, validity_days=365):
     - Client ID (subject)
     - Client's public key
     - Validity period
-    - CA's digital signature
+    - CA's digital signature (using manual RSA)
     """
     cert_id = str(uuid.uuid4())[:12]
     issued_at = datetime.now()
@@ -76,21 +78,20 @@ def create_certificate(client_id, client_public_key_pem, validity_days=365):
     cert_data = {
         'certificate_id': cert_id,
         'subject': client_id,
-        'public_key': client_public_key_pem,
+        'public_key': client_public_key_json,
         'issued_at': issued_at.isoformat(),
         'expires_at': expires_at.isoformat(),
-        'issuer': 'Trusted Certificate Authority'
+        'issuer': 'Manual RSA Certificate Authority'
     }
     
-    # Create signature over certificate data
-    data_to_sign = json.dumps(cert_data, sort_keys=True)
-    signature = sign_data(data_to_sign, ca_private_key)
+    # Create signature over certificate data (using manual RSA)
+    signature = sign_certificate_data(cert_data, ca_private_key)
     
     # Complete certificate with signature
     certificate = {
         **cert_data,
         'ca_signature': signature,
-        'ca_public_key': ca_public_key.export_key().decode('utf-8')
+        'ca_public_key': export_public_key(ca_public_key)
     }
     
     return cert_id, certificate
@@ -105,7 +106,13 @@ def home():
     return jsonify({
         'status': 'success',
         'service': 'Certificate Authority (CA) Server',
+        'implementation': 'MANUAL RSA - No external crypto library',
         'description': 'Issues and verifies digital certificates for secure key distribution',
+        'security': {
+            'key_generation': 'Manual RSA with Miller-Rabin primality test',
+            'hashing': 'Manual SHA-256 implementation',
+            'signatures': 'RSA-SHA256 with PKCS#1 v1.5 padding'
+        },
         'endpoints': {
             '/ca/info': 'GET - Get CA public key',
             '/ca/register': 'POST - Register client and get certificate',
@@ -125,9 +132,10 @@ def ca_info():
     """
     return jsonify({
         'status': 'success',
-        'ca_public_key': ca_public_key.export_key().decode('utf-8'),
-        'key_size': ca_public_key.size_in_bits(),
-        'algorithm': 'RSA-2048 with SHA256 signatures'
+        'ca_public_key': export_public_key(ca_public_key),
+        'key_size': ca_public_key['n'].bit_length(),
+        'algorithm': 'Manual RSA with SHA-256 signatures',
+        'implementation': 'No external crypto library used'
     })
 
 @app.route('/ca/register', methods=['POST'])
@@ -136,10 +144,10 @@ def register_client():
     CLIENT REGISTRATION
     -------------------
     Process:
-    1. Client generates RSA key pair
+    1. Client generates RSA key pair (using manual implementation)
     2. Client sends public key + identity to CA
     3. CA creates digital certificate
-    4. CA signs certificate with CA's private key
+    4. CA signs certificate with CA's private key (manual RSA signature)
     5. CA returns certificate to client
     
     The certificate proves ownership of the public key
@@ -154,15 +162,17 @@ def register_client():
             }), 400
         
         client_id = data['client_id']
-        client_public_key_pem = data['public_key']
+        client_public_key_json = data['public_key']
         
-        # Validate public key format
+        # Validate public key format (should be JSON with n and e)
         try:
-            RSA.import_key(client_public_key_pem)
+            key_data = json.loads(client_public_key_json) if isinstance(client_public_key_json, str) else client_public_key_json
+            if 'n' not in key_data or 'e' not in key_data:
+                raise ValueError("Missing n or e")
         except:
             return jsonify({
                 'status': 'error',
-                'message': 'Invalid RSA public key format'
+                'message': 'Invalid public key format. Expected JSON with n and e fields.'
             }), 400
         
         # Check if client already registered
@@ -178,25 +188,35 @@ def register_client():
                         'reused': True
                     })
         
-        # Create certificate
-        cert_id, certificate = create_certificate(client_id, client_public_key_pem)
+        # Create certificate (with manual RSA signature)
+        cert_id, certificate = create_certificate(client_id, client_public_key_json)
         
         # Store certificate and public key
         certificates_db[cert_id] = certificate
-        client_keys_db[client_id] = client_public_key_pem
+        client_keys_db[client_id] = client_public_key_json
+        
+        print(f"\n📜 Certificate issued for '{client_id}'")
+        print(f"   Certificate ID: {cert_id}")
+        print(f"   Signed with: Manual RSA-SHA256")
         
         return jsonify({
             'status': 'success',
-            'message': 'Certificate issued successfully',
+            'message': 'Certificate issued successfully (Manual RSA signature)',
             'certificate_id': cert_id,
             'certificate': certificate,
+            'security_info': {
+                'signature_algorithm': 'Manual RSA-SHA256',
+                'no_external_crypto': True
+            },
             'instruction': 'Save this certificate. You will need it for secure communication.'
         })
     
     except Exception as e:
+        import traceback
         return jsonify({
             'status': 'error',
-            'message': f'Registration error: {str(e)}'
+            'message': f'Registration error: {str(e)}',
+            'traceback': traceback.format_exc()
         }), 500
 
 @app.route('/ca/verify', methods=['POST'])
@@ -207,7 +227,7 @@ def verify_certificate():
     Process:
     1. Receive certificate from client
     2. Extract certificate data and signature
-    3. Verify signature using CA's public key
+    3. Verify signature using CA's public key (manual RSA verify)
     4. Check expiration date
     5. Return verification result
     
@@ -233,15 +253,8 @@ def verify_certificate():
                 'message': 'Invalid certificate format'
             }), 400
         
-        # Extract signature
-        signature = cert['ca_signature']
-        
-        # Recreate data that was signed
-        cert_data = {k: v for k, v in cert.items() if k not in ['ca_signature', 'ca_public_key']}
-        data_to_verify = json.dumps(cert_data, sort_keys=True)
-        
-        # Verify signature
-        is_valid = verify_signature(data_to_verify, signature, ca_public_key)
+        # Verify signature (using manual RSA)
+        is_valid = verify_certificate_signature(cert, ca_public_key)
         
         if not is_valid:
             return jsonify({
@@ -256,13 +269,14 @@ def verify_certificate():
         
         return jsonify({
             'status': 'success',
-            'message': 'Certificate verified successfully',
+            'message': 'Certificate verified successfully (Manual RSA)',
             'valid': True,
             'certificate_id': cert['certificate_id'],
             'subject': cert['subject'],
             'expires_at': cert['expires_at'],
             'expired': is_expired,
-            'issued_by': cert['issuer']
+            'issued_by': cert['issuer'],
+            'verification_method': 'Manual RSA-SHA256'
         })
     
     except Exception as e:
@@ -332,7 +346,8 @@ def list_certificates():
     return jsonify({
         'status': 'success',
         'total_certificates': len(certs_list),
-        'certificates': certs_list
+        'certificates': certs_list,
+        'signature_algorithm': 'Manual RSA-SHA256'
     })
 
 @app.route('/ca/reset', methods=['POST'])
@@ -354,12 +369,14 @@ def reset_ca():
     })
 
 if __name__ == "__main__":
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print("CERTIFICATE AUTHORITY (CA) SERVER")
+    print("MANUAL RSA IMPLEMENTATION - No External Crypto Library")
     print("=" * 60)
     print("\n🔐 CA Key Pair Information:")
-    print(f"   Algorithm: RSA-{ca_public_key.size_in_bits()}")
-    print(f"   Signature: SHA256 with PKCS#1 v1.5")
+    print(f"   Algorithm: Manual RSA-{ca_public_key['n'].bit_length()}")
+    print(f"   Signature: Manual SHA-256 + RSA PKCS#1 v1.5")
+    print(f"   Key Generation: Miller-Rabin primality test")
     print("\n📋 Available Endpoints:")
     print("   GET  /              - Server info")
     print("   GET  /ca/info       - Get CA public key")

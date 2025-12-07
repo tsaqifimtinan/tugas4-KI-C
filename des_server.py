@@ -1,17 +1,38 @@
+"""
+DES Server with Manual RSA Implementation
+------------------------------------------
+Secure message encryption using DES with RSA-based key distribution.
+All RSA operations are implemented manually WITHOUT external crypto libraries.
+
+Features:
+- DES encryption for messages (existing implementation)
+- Manual RSA for key exchange
+- Manual RSA digital signatures for non-repudiation
+- Certificate-based authentication
+"""
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP
-from Crypto.Signature import pkcs1_15
-from Crypto.Hash import SHA256
 import uuid
 import random
-import base64
 import json
 from datetime import datetime
 
+# Import manual RSA implementation
+from rsa_signature import (
+    rsa_sign,
+    rsa_verify,
+    rsa_encrypt,
+    rsa_decrypt,
+    import_public_key,
+    import_private_key,
+    export_public_key,
+    verify_certificate_signature,
+    sha256_manual
+)
+
 # ========================================
-# DES CORE IMPLEMENTATION
+# DES CORE IMPLEMENTATION (Existing)
 # ========================================
 
 # Initial Permutation Table
@@ -101,7 +122,7 @@ def hex2bin(s):
           'C': "1100", 'D': "1101", 'E': "1110", 'F': "1111"}
     bin_str = ""
     for i in range(len(s)):
-        bin_str += mp[s[i]]
+        bin_str += mp[s[i].upper()]
     return bin_str
 
 def bin2hex(s):
@@ -111,7 +132,6 @@ def bin2hex(s):
           "1000": '8', "1001": '9', "1010": 'A', "1011": 'B',
           "1100": 'C', "1101": 'D', "1110": 'E', "1111": 'F'}
     hex_str = ""
-    # Pad to multiple of 4 if needed
     while len(s) % 4 != 0:
         s = '0' + s
     for i in range(0, len(s), 4):
@@ -165,7 +185,6 @@ def xor(a, b):
 
 def generate_round_keys(key):
     """Generate 16 round keys from the main key"""
-    # Key Permutation Table for PC-1
     keyp = [57, 49, 41, 33, 25, 17, 9,
             1, 58, 50, 42, 34, 26, 18,
             10, 2, 59, 51, 43, 35, 27,
@@ -175,8 +194,6 @@ def generate_round_keys(key):
             14, 6, 61, 53, 45, 37, 29,
             21, 13, 5, 28, 20, 12, 4]
 
-    # Key Permutation Table for PC-2 (48 bits selected from 56)
-    # Permuted Choice 2 (PC-2) - reduces 56 to 48 bits
     key_comp = [14, 17, 11, 24, 1, 5, 3, 28,
                 15, 6, 21, 10, 23, 19, 12, 4,
                 26, 8, 16, 7, 27, 20, 13, 2,
@@ -184,130 +201,70 @@ def generate_round_keys(key):
                 33, 48, 44, 49, 39, 56, 34, 53,
                 46, 42, 50, 36, 29, 32, 22, 43]
 
-    # Number of shifts for each round
-    shift_table = [1, 1, 2, 2,
-                   2, 2, 2, 2,
-                   1, 2, 2, 2,
-                   2, 2, 2, 1]
+    shift_table = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1]
 
-    # Convert key to binary
     key = hex2bin(key)
-
-    # PC-1 Permutation
     key = permute(key, keyp, 56)
 
-    # Split into left and right
     left = key[0:28]
     right = key[28:56]
 
-    rkb = []  # Round keys in binary
-    rk = []   # Round keys in hexadecimal
+    rkb = []
     for i in range(0, 16):
-        # Shift left and right
         left = shift_left(left, shift_table[i])
         right = shift_left(right, shift_table[i])
-
-        # Combine
         combine_str = left + right
-        
-        # Debug: Check lengths
-        if len(combine_str) != 56:
-            print(f"ERROR at round {i}: combine_str length = {len(combine_str)}, should be 56")
-            print(f"left length = {len(left)}, right length = {len(right)}")
-            raise ValueError(f"Combined string has wrong length: {len(combine_str)}")
-
-        # PC-2 Permutation
         round_key = permute(combine_str, key_comp, 48)
-
         rkb.append(round_key)
-        rk.append(bin2hex(round_key))
 
     return rkb
 
 def encrypt_decrypt(pt, rkb):
     """Main DES encryption/decryption function"""
     pt = hex2bin(pt)
-
-    # Initial Permutation
     pt = permute(pt, initial_perm, 64)
 
-    # Split into left and right
     left = pt[0:32]
     right = pt[32:64]
 
     for i in range(0, 16):
-        # Expansion D-box
         right_expanded = permute(right, exp_d, 48)
-
-        # XOR with round key
         x = xor(rkb[i], right_expanded)
 
-        # S-boxes
         op = ""
         for j in range(0, 8):
-            # Get 6-bit chunk
             chunk = x[j * 6:(j * 6) + 6]
-            
-            # Ensure chunk is exactly 6 bits
             if len(chunk) < 6:
                 chunk = chunk.ljust(6, '0')
-            
-            # Row (first and last bit)
             row = int(chunk[0] + chunk[5], 2)
-            
-            # Column (middle 4 bits)
             col = int(chunk[1:5], 2)
-            
-            # Bounds check
-            if row > 3 or col > 15:
-                raise ValueError(f"S-box index out of range: row={row}, col={col}, chunk={chunk}")
-            
-            # S-box lookup
             val = sbox[j][row][col]
             op += dec2bin(val)
 
-        # Permutation P
         op = permute(op, per, 32)
-
-        # XOR with left
         x = xor(op, left)
-
-        # Swap
         left = x
         if i != 15:
             left, right = right, left
 
-    # Combination
     combine = left + right
-
-    # Final permutation
     cipher_text = permute(combine, final_perm, 64)
     return cipher_text
 
 def text_to_hex_blocks(text):
     """Convert text to 64-bit hex blocks"""
-    # Convert to hex
     hex_str = text.encode('utf-8').hex().upper()
-    
-    # Pad to multiple of 16 (64 bits)
     while len(hex_str) % 16 != 0:
         hex_str += '0'
-    
-    # Split into 16-character blocks
     blocks = []
     for i in range(0, len(hex_str), 16):
         blocks.append(hex_str[i:i+16])
-    
     return blocks
 
 def hex_blocks_to_text(blocks, original_length):
     """Convert hex blocks back to text"""
     hex_str = ''.join(blocks)
-    
-    # Convert hex to bytes
     byte_data = bytes.fromhex(hex_str)
-    
-    # Decode and remove padding
     text = byte_data.decode('utf-8', errors='ignore')
     return text[:original_length]
 
@@ -328,30 +285,37 @@ CORS(app)
 messages_store = {}
 
 # ========================================
-# PKI HELPER FUNCTIONS
+# PKI HELPER FUNCTIONS (Manual RSA)
 # ========================================
 
-def verify_certificate_signature(certificate, ca_public_key):
-    """Verify certificate was signed by CA"""
+def verify_cert_signature(certificate, ca_public_key_json):
+    """Verify certificate was signed by CA using manual RSA"""
     try:
-        signature = certificate['ca_signature']
-        cert_data = {k: v for k, v in certificate.items() 
-                    if k not in ['ca_signature', 'ca_public_key']}
-        data_to_verify = json.dumps(cert_data, sort_keys=True)
-        
-        h = SHA256.new(data_to_verify.encode('utf-8'))
-        signature_bytes = base64.b64decode(signature)
-        pkcs1_15.new(ca_public_key).verify(h, signature_bytes)
-        return True
-    except:
+        ca_public_key = import_public_key(ca_public_key_json)
+        return verify_certificate_signature(certificate, ca_public_key)
+    except Exception as e:
+        print(f"Certificate verification error: {e}")
         return False
 
-def encrypt_with_public_key(data, public_key_pem):
-    """Encrypt data using RSA public key"""
-    public_key = RSA.import_key(public_key_pem)
-    cipher = PKCS1_OAEP.new(public_key)
-    encrypted = cipher.encrypt(data.encode('utf-8'))
-    return base64.b64encode(encrypted).decode('utf-8')
+def encrypt_with_public_key_manual(data, public_key_json):
+    """Encrypt data using manual RSA public key"""
+    public_key = import_public_key(public_key_json)
+    return rsa_encrypt(data, public_key)
+
+def decrypt_with_private_key_manual(ciphertext, private_key_json):
+    """Decrypt data using manual RSA private key"""
+    private_key = import_private_key(private_key_json)
+    return rsa_decrypt(ciphertext, private_key)
+
+def sign_message_manual(message, private_key_json):
+    """Sign message using manual RSA"""
+    private_key = import_private_key(private_key_json)
+    return rsa_sign(message, private_key)
+
+def verify_signature_manual(message, signature, public_key_json):
+    """Verify signature using manual RSA"""
+    public_key = import_public_key(public_key_json)
+    return rsa_verify(message, signature, public_key)
 
 # ========================================
 # PKI-ENABLED ENDPOINTS
@@ -361,46 +325,52 @@ def encrypt_with_public_key(data, public_key_pem):
 def home():
     return jsonify({
         'status': 'success',
-        'service': 'DES Server with Public Key Infrastructure (PKI)',
-        'description': 'Secure message encryption using DES with RSA-based key distribution',
+        'service': 'DES Server with Manual RSA Implementation',
+        'description': 'Secure message encryption using DES with manual RSA key distribution',
+        'implementation': 'NO external crypto library - all RSA operations manual',
         'endpoints': {
             '/': 'GET - Server info',
-            '/send-secure': 'POST - Encrypt message with certificate-based key distribution',
-            '/receive-secure': 'POST - Decrypt message using private key',
+            '/send-secure': 'POST - Encrypt and SIGN message with PKI',
+            '/receive-secure': 'POST - Decrypt and VERIFY message',
+            '/sign': 'POST - Sign a document (no encryption)',
+            '/verify-signature': 'POST - Verify a signature',
             '/messages': 'GET - List all stored messages'
         },
         'security': {
             'encryption': 'DES for message content',
-            'key_distribution': 'RSA-2048 with digital certificates',
-            'authentication': 'CA-signed certificates'
+            'key_distribution': 'Manual RSA encryption',
+            'authentication': 'CA-signed certificates (manual RSA)',
+            'digital_signature': 'Manual RSA-SHA256 for non-repudiation'
         }
     })
 
 @app.route('/send-secure', methods=['POST'])
 def send_secure_message():
     """
-    SECURE MESSAGE SENDING WITH PKI
-    --------------------------------
+    SECURE MESSAGE SENDING WITH PKI AND DIGITAL SIGNATURE
+    ------------------------------------------------------
     Process:
-    1. Sender provides: plaintext, sender certificate, receiver certificate
-    2. Verify both certificates with CA
+    1. Sender provides: plaintext, sender certificate, receiver certificate, sender private key
+    2. Verify both certificates with CA (manual RSA)
     3. Generate random DES session key
     4. Encrypt message with DES using session key
-    5. Encrypt DES key with receiver's RSA public key (from certificate)
-    6. Sign the message with sender's identity
-    7. Store encrypted message with encrypted key
+    5. Encrypt DES key with receiver's RSA public key (manual RSA)
+    6. SIGN the message with sender's RSA private key (manual RSA - NON-REPUDIATION)
+    7. Store encrypted message with encrypted key and signature
     8. Return message_id to sender
     
     Security Benefits:
-    - Only receiver can decrypt the DES key (RSA encryption)
-    - Message authenticity verified (certificates)
+    - Only receiver can decrypt the DES key
+    - Message authenticity verified via certificates
     - Session key per message (perfect forward secrecy)
+    - DIGITAL SIGNATURE proves sender identity (non-repudiation)
+    - ALL RSA operations done manually
     """
     try:
         data = request.get_json()
         
         # Validate input
-        required_fields = ['text', 'sender_certificate', 'receiver_certificate', 'ca_public_key']
+        required_fields = ['text', 'sender_certificate', 'receiver_certificate', 'ca_public_key', 'sender_private_key']
         if not all(field in data for field in required_fields):
             return jsonify({
                 'status': 'error',
@@ -410,27 +380,28 @@ def send_secure_message():
         plaintext = data['text']
         sender_cert = data['sender_certificate']
         receiver_cert = data['receiver_certificate']
-        ca_public_key_pem = data['ca_public_key']
+        ca_public_key_json = data['ca_public_key']
+        sender_private_key_json = data['sender_private_key']
         
-        # STEP 1: Verify certificates
-        ca_public_key = RSA.import_key(ca_public_key_pem)
+        # STEP 1: Verify certificates (using manual RSA)
+        print(f"\n🔐 Verifying certificates (Manual RSA)...")
         
-        if not verify_certificate_signature(sender_cert, ca_public_key):
+        if not verify_cert_signature(sender_cert, ca_public_key_json):
             return jsonify({
                 'status': 'error',
-                'message': 'Invalid sender certificate'
+                'message': 'Invalid sender certificate (manual RSA verification failed)'
             }), 400
+        print("   ✅ Sender certificate verified")
         
-        if not verify_certificate_signature(receiver_cert, ca_public_key):
+        if not verify_cert_signature(receiver_cert, ca_public_key_json):
             return jsonify({
                 'status': 'error',
-                'message': 'Invalid receiver certificate'
+                'message': 'Invalid receiver certificate (manual RSA verification failed)'
             }), 400
+        print("   ✅ Receiver certificate verified")
         
         # STEP 2: Extract receiver's public key from certificate
-        receiver_public_key_pem = receiver_cert['public_key']
-        print(f"\n🔑 Receiver's Public Key (first 100 chars):")
-        print(f"   {receiver_public_key_pem[:100]}...")
+        receiver_public_key_json = receiver_cert['public_key']
         
         # STEP 3: Generate random DES session key
         des_key = generate_random_key()
@@ -446,25 +417,30 @@ def send_secure_message():
             cipher_block = bin2hex(encrypt_decrypt(block, rkb))
             encrypted_blocks.append(cipher_block)
         
-        # STEP 5: Encrypt DES key with receiver's RSA public key
-        print(f"\n🔐 Encrypting session key with receiver's public key...")
-        encrypted_des_key = encrypt_with_public_key(des_key, receiver_public_key_pem)
-        print(f"   ✅ Session key encrypted (length: {len(encrypted_des_key)} chars)")
+        # STEP 5: Encrypt DES key with receiver's RSA public key (MANUAL)
+        print(f"\n🔐 Encrypting session key (Manual RSA)...")
+        encrypted_des_key = encrypt_with_public_key_manual(des_key, receiver_public_key_json)
+        print(f"   ✅ Session key encrypted")
 
+        # STEP 6: Create digital signature (MANUAL RSA)
+        print(f"\n✍️  Creating digital signature (Manual RSA-SHA256)...")
+        message_signature = sign_message_manual(plaintext, sender_private_key_json)
+        print(f"   ✅ Message signed (signature length: {len(message_signature)} chars)")
         
-        # STEP 6: Generate message ID
+        # STEP 7: Generate message ID
         message_id = str(uuid.uuid4())[:12]
         
-        # STEP 7: Store encrypted message
+        # STEP 8: Store encrypted message with signature
         messages_store[message_id] = {
             'encrypted_blocks': encrypted_blocks,
-            'encrypted_key': encrypted_des_key,  # Only receiver can decrypt this
+            'encrypted_key': encrypted_des_key,
             'original_length': original_length,
             'sender': sender_cert['subject'],
             'receiver': receiver_cert['subject'],
             'timestamp': datetime.now().isoformat(),
             'sender_certificate': sender_cert,
-            'receiver_certificate': receiver_cert
+            'receiver_certificate': receiver_cert,
+            'message_signature': message_signature
         }
         
         print(f"\n{'='*60}")
@@ -473,22 +449,25 @@ def send_secure_message():
         print(f"   • From: {sender_cert['subject']}")
         print(f"   • To: {receiver_cert['subject']}")
         print(f"   • Message Length: {original_length} chars")
+        print(f"   • Digitally Signed: ✅ (Manual RSA)")
         print(f"{'='*60}\n")
         
         ciphertext = ''.join(encrypted_blocks)
         
         return jsonify({
             'status': 'success',
-            'message': 'Message encrypted and secured with PKI',
+            'message': 'Message encrypted, signed, and secured (Manual RSA)',
             'message_id': message_id,
             'sender': sender_cert['subject'],
             'receiver': receiver_cert['subject'],
             'ciphertext': ciphertext,
             'encrypted_session_key': encrypted_des_key,
+            'message_signature': message_signature,
             'security_info': {
                 'message_encryption': 'DES with random session key',
-                'key_distribution': 'RSA-encrypted session key',
-                'authentication': 'CA-signed certificates'
+                'key_distribution': 'Manual RSA-encrypted session key',
+                'authentication': 'CA-signed certificates (Manual RSA)',
+                'non_repudiation': 'Manual RSA-SHA256 digital signature'
             },
             'instruction': f'Share message_id with {receiver_cert["subject"]}: {message_id}'
         })
@@ -506,20 +485,22 @@ def send_secure_message():
 @app.route('/receive-secure', methods=['POST'])
 def receive_secure_message():
     """
-    SECURE MESSAGE RECEIVING WITH PKI
-    ---------------------------------
+    SECURE MESSAGE RECEIVING WITH PKI AND SIGNATURE VERIFICATION
+    -------------------------------------------------------------
     Process:
     1. Receiver provides: message_id, private key, certificate
     2. Retrieve encrypted message from storage
-    3. Verify receiver's certificate
-    4. Decrypt DES session key using receiver's RSA private key
+    3. Verify receiver's certificate (manual RSA)
+    4. Decrypt DES session key using receiver's RSA private key (manual RSA)
     5. Decrypt message using recovered DES key
-    6. Return plaintext to receiver
+    6. VERIFY sender's digital signature (manual RSA)
+    7. Return plaintext with verification status
     
     Security Benefits:
-    - Only intended receiver can decrypt (RSA private key)
-    - Sender identity verified (certificate check)
-    - End-to-end encryption maintained
+    - Only intended receiver can decrypt
+    - Sender identity verified
+    - NON-REPUDIATION: Sender cannot deny sending the message
+    - ALL RSA operations done manually
     """
     try:
         data = request.get_json()
@@ -533,9 +514,9 @@ def receive_secure_message():
             }), 400
         
         message_id = data['message_id']
-        receiver_private_key_pem = data['private_key']
+        receiver_private_key_json = data['private_key']
         receiver_cert = data['certificate']
-        ca_public_key_pem = data['ca_public_key']
+        ca_public_key_json = data['ca_public_key']
         
         # STEP 1: Check message exists
         if message_id not in messages_store:
@@ -546,65 +527,29 @@ def receive_secure_message():
         
         msg = messages_store[message_id]
         
-        # STEP 2: Verify receiver's certificate
-        ca_public_key = RSA.import_key(ca_public_key_pem)
-        if not verify_certificate_signature(receiver_cert, ca_public_key):
+        # STEP 2: Verify receiver's certificate (manual RSA)
+        if not verify_cert_signature(receiver_cert, ca_public_key_json):
             return jsonify({
                 'status': 'error',
                 'message': 'Invalid receiver certificate'
             }), 400
         
         # STEP 3: Verify receiver is the intended recipient
-        print(f"\n{'='*60}")
-        print(f"🔍 RECEIVE MESSAGE DEBUG - Message ID: {message_id}")
-        print(f"{'='*60}")
-        print(f"📨 Message Info:")
-        print(f"   • Sender: {msg['sender']}")
-        print(f"   • Intended Receiver: {msg['receiver']}")
-        print(f"   • Timestamp: {msg['timestamp']}")
-        print(f"\n👤 Your Certificate:")
-        print(f"   • Subject: {receiver_cert['subject']}")
-        print(f"\n🔐 Validation:")
-        print(f"   • Match: {receiver_cert['subject'] == msg['receiver']}")
-        
         if receiver_cert['subject'] != msg['receiver']:
-            print(f"   ❌ FAILED: You are '{receiver_cert['subject']}', message is for '{msg['receiver']}'")
-            print(f"{'='*60}\n")
             return jsonify({
                 'status': 'error',
-                'message': f"Access denied. This message is for '{msg['receiver']}', but your certificate shows '{receiver_cert['subject']}'"
+                'message': f"Access denied. Message is for '{msg['receiver']}'"
             }), 403
         
-        print(f"   ✅ PASSED: You are the intended receiver")
-        print(f"{'='*60}\n")
-        
-        # STEP 4: Decrypt DES session key with receiver's private key
-        print(f"🔑 STEP 4: Decrypting DES Session Key...")
+        # STEP 4: Decrypt DES session key with manual RSA
+        print(f"\n🔑 Decrypting DES Session Key (Manual RSA)...")
         try:
-            receiver_private_key = RSA.import_key(receiver_private_key_pem)
-            print(f"   ✅ Private key loaded successfully")
-            print(f"   • Key size: {receiver_private_key.size_in_bits()} bits")
-            
-            cipher = PKCS1_OAEP.new(receiver_private_key)
-            encrypted_key_bytes = base64.b64decode(msg['encrypted_key'])
-            print(f"   • Encrypted key size: {len(encrypted_key_bytes)} bytes")
-            
-            des_key = cipher.decrypt(encrypted_key_bytes).decode('utf-8')
-            print(f"   ✅ Session key decrypted successfully")
-            print(f"   • DES Key: {des_key[:8]}...{des_key[-8:]}")
+            des_key = decrypt_with_private_key_manual(msg['encrypted_key'], receiver_private_key_json)
+            print(f"   ✅ Session key decrypted: {des_key}")
         except Exception as e:
-            print(f"   ❌ DECRYPTION FAILED!")
-            print(f"   • Error type: {type(e).__name__}")
-            print(f"   • Error message: {str(e)}")
-            print(f"\n💡 DIAGNOSIS:")
-            print(f"   This usually means:")
-            print(f"   1. Private key doesn't match the public key used for encryption")
-            print(f"   2. Private key is corrupted or wrong format")
-            print(f"   3. Message was encrypted for a different receiver")
             return jsonify({
                 'status': 'error',
-                'message': f'Failed to decrypt session key: {str(e)}',
-                'hint': 'Make sure you are using the SAME private key that matches your certificate'
+                'message': f'Failed to decrypt session key: {str(e)}'
             }), 403
         
         # STEP 5: Decrypt message with recovered DES key
@@ -619,6 +564,27 @@ def receive_secure_message():
         plaintext = hex_blocks_to_text(decrypted_blocks, msg['original_length'])
         ciphertext = ''.join(msg['encrypted_blocks'])
         
+        # STEP 6: Verify sender's digital signature (Manual RSA)
+        print(f"\n✍️  Verifying digital signature (Manual RSA-SHA256)...")
+        signature_valid = False
+        signature_status = "No signature found"
+        
+        if 'message_signature' in msg:
+            sender_public_key_json = msg['sender_certificate']['public_key']
+            signature_valid = verify_signature_manual(
+                plaintext, 
+                msg['message_signature'], 
+                sender_public_key_json
+            )
+            if signature_valid:
+                signature_status = "✅ VERIFIED - Sender identity confirmed (Manual RSA)"
+                print(f"   {signature_status}")
+            else:
+                signature_status = "❌ INVALID - Signature verification failed!"
+                print(f"   {signature_status}")
+        else:
+            print(f"   ⚠️  No signature found")
+        
         return jsonify({
             'status': 'success',
             'message': 'Message decrypted successfully',
@@ -628,17 +594,127 @@ def receive_secure_message():
             'sender': msg['sender'],
             'receiver': msg['receiver'],
             'timestamp': msg['timestamp'],
+            'signature_verification': {
+                'valid': signature_valid,
+                'status': signature_status,
+                'non_repudiation': signature_valid,
+                'algorithm': 'Manual RSA-SHA256'
+            },
             'security_info': {
-                'session_key_decrypted': 'Using your RSA private key',
-                'message_decrypted': 'Using recovered DES session key',
-                'sender_verified': 'Via CA-signed certificate'
+                'session_key_decrypted': 'Using Manual RSA',
+                'message_decrypted': 'Using DES',
+                'sender_verified': 'Via CA certificate (Manual RSA)',
+                'signature_verified': signature_valid
+            }
+        })
+    
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'status': 'error',
+            'message': f'Error: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/sign', methods=['POST'])
+def sign_document():
+    """
+    STANDALONE DIGITAL SIGNATURE (Manual RSA)
+    -----------------------------------------
+    Sign any document without encryption.
+    """
+    try:
+        data = request.get_json()
+        
+        required_fields = ['message', 'private_key', 'certificate', 'ca_public_key']
+        if not all(field in data for field in required_fields):
+            return jsonify({
+                'status': 'error',
+                'message': f'Required fields: {", ".join(required_fields)}'
+            }), 400
+        
+        message = data['message']
+        private_key_json = data['private_key']
+        certificate = data['certificate']
+        ca_public_key_json = data['ca_public_key']
+        
+        # Verify certificate
+        if not verify_cert_signature(certificate, ca_public_key_json):
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid certificate'
+            }), 400
+        
+        # Create signature (Manual RSA)
+        signature = sign_message_manual(message, private_key_json)
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Document signed successfully (Manual RSA)',
+            'original_message': message,
+            'signature': signature,
+            'signer': certificate['subject'],
+            'algorithm': 'Manual RSA-SHA256',
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Signing error: {str(e)}'
+        }), 500
+
+@app.route('/verify-signature', methods=['POST'])
+def verify_signature_endpoint():
+    """
+    STANDALONE SIGNATURE VERIFICATION (Manual RSA)
+    -----------------------------------------------
+    Verify a digital signature on any document.
+    """
+    try:
+        data = request.get_json()
+        
+        required_fields = ['message', 'signature', 'certificate', 'ca_public_key']
+        if not all(field in data for field in required_fields):
+            return jsonify({
+                'status': 'error',
+                'message': f'Required fields: {", ".join(required_fields)}'
+            }), 400
+        
+        message = data['message']
+        signature = data['signature']
+        certificate = data['certificate']
+        ca_public_key_json = data['ca_public_key']
+        
+        # Verify certificate first
+        if not verify_cert_signature(certificate, ca_public_key_json):
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid certificate',
+                'signature_valid': False
+            }), 400
+        
+        # Verify signature (Manual RSA)
+        public_key_json = certificate['public_key']
+        is_valid = verify_signature_manual(message, signature, public_key_json)
+        
+        return jsonify({
+            'status': 'success' if is_valid else 'failed',
+            'signature_valid': is_valid,
+            'message': 'Signature is valid (Manual RSA)' if is_valid else 'Signature verification failed',
+            'signer': certificate['subject'],
+            'verification_details': {
+                'certificate_valid': True,
+                'signature_matches': is_valid,
+                'algorithm': 'Manual RSA-SHA256'
             }
         })
     
     except Exception as e:
         return jsonify({
             'status': 'error',
-            'message': f'Error: {str(e)}'
+            'message': f'Verification error: {str(e)}',
+            'signature_valid': False
         }), 500
 
 @app.route('/messages', methods=['GET'])
@@ -650,7 +726,8 @@ def list_messages():
             'message_id': msg_id,
             'sender': msg_data['sender'],
             'receiver': msg_data['receiver'],
-            'timestamp': msg_data['timestamp']
+            'timestamp': msg_data['timestamp'],
+            'has_signature': 'message_signature' in msg_data
         })
     
     return jsonify({
@@ -661,40 +738,36 @@ def list_messages():
 
 @app.route('/reset', methods=['POST'])
 def reset_server():
-    """Reset message storage (for testing only)"""
+    """Reset message storage"""
     global messages_store
-    
     old_count = len(messages_store)
     messages_store.clear()
     
     return jsonify({
         'status': 'success',
-        'message': 'Message storage reset successfully',
+        'message': 'Message storage reset',
         'cleared_messages': old_count
     })
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("DES SERVER WITH PUBLIC KEY INFRASTRUCTURE (PKI)")
+    print("DES SERVER WITH MANUAL RSA IMPLEMENTATION")
+    print("NO EXTERNAL CRYPTO LIBRARY USED")
     print("=" * 60)
     print("\n🔐 Security Features:")
     print("   ✓ Message encryption: DES algorithm")
-    print("   ✓ Key distribution: RSA-2048 encryption")
-    print("   ✓ Authentication: CA-signed certificates")
-    print("   ✓ Perfect forward secrecy: Unique session key per message")
+    print("   ✓ Key distribution: Manual RSA encryption")
+    print("   ✓ Authentication: CA-signed certificates (Manual RSA)")
+    print("   ✓ Digital Signature: Manual RSA-SHA256 (Non-repudiation)")
+    print("   ✓ Hash function: Manual SHA-256")
     print("\n📋 Available Endpoints:")
     print("   GET  /              - Server info")
-    print("   POST /send-secure   - Send encrypted message with PKI")
-    print("   POST /receive-secure - Receive and decrypt message")
+    print("   POST /send-secure   - Send encrypted+signed message")
+    print("   POST /receive-secure - Receive and verify message")
+    print("   POST /sign          - Sign document (no encryption)")
+    print("   POST /verify-signature - Verify signature")
     print("   GET  /messages      - List all messages")
-    print("   POST /reset         - Reset storage (testing only)")
     print("="*60)
-    print("\n⚠️  IMPORTANT: This server requires localtunnel for access")
-    print("\n📝 Setup Instructions:")
-    print("   1. Install localtunnel: npm install -g localtunnel")
-    print("   2. In a new terminal, run: lt --port 5002 --subdomain des-server-<yourname>")
-    print("   3. Share the generated URL (e.g., https://des-server-yourname.loca.lt)")
     print("\n✅ Server starting on port 5002...")
-    print("   Press Ctrl+C to stop\n")
     
     app.run(host='0.0.0.0', port=5002, debug=False)

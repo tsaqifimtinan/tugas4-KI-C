@@ -1,20 +1,32 @@
 """
-PKI-Enabled DES Client
-----------------------
-Secure messaging client using Public Key Infrastructure:
-1. Register with CA to get digital certificate
-2. Send encrypted messages using receiver's certificate
-3. Receive messages using own private key
+PKI-Enabled DES Client with Manual RSA
+---------------------------------------
+Secure messaging client using Manual RSA implementation.
+NO external cryptography library used for RSA operations.
+
+Features:
+1. Register with CA to get digital certificate (Manual RSA)
+2. Send encrypted AND SIGNED messages
+3. Receive and VERIFY message signatures
+4. Document signing (without encryption)
 """
 
 import requests
 import json
 import os
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP
-import base64
 
-class PKIClient:
+# Import manual RSA implementation
+from rsa_signature import (
+    generate_rsa_keypair,
+    export_public_key,
+    export_private_key,
+    import_public_key,
+    import_private_key,
+    rsa_sign,
+    rsa_verify
+)
+
+class PKIClientManual:
     def __init__(self, client_id, ca_url, des_server_url):
         self.client_id = client_id
         self.ca_url = ca_url
@@ -23,15 +35,15 @@ class PKIClient:
         self.public_key = None
         self.certificate = None
         self.ca_public_key = None
-        self.key_file = f"{client_id}_private_key.pem"
-        self.cert_file = f"{client_id}_certificate.json"
+        self.key_file = f"{client_id}_manual_private_key.json"
+        self.cert_file = f"{client_id}_manual_certificate.json"
         
     def save_keys_and_cert(self):
         """Save private key and certificate to files"""
         try:
             # Save private key
-            with open(self.key_file, 'wb') as f:
-                f.write(self.private_key.export_key())
+            with open(self.key_file, 'w') as f:
+                json.dump(self.private_key, f, indent=2, default=str)
             
             # Save certificate
             with open(self.cert_file, 'w') as f:
@@ -48,9 +60,18 @@ class PKIClient:
         try:
             if os.path.exists(self.key_file) and os.path.exists(self.cert_file):
                 # Load private key
-                with open(self.key_file, 'rb') as f:
-                    self.private_key = RSA.import_key(f.read())
-                self.public_key = self.private_key.publickey()
+                with open(self.key_file, 'r') as f:
+                    key_data = json.load(f)
+                    self.private_key = {
+                        'n': int(key_data['n']),
+                        'd': int(key_data['d']),
+                        'p': int(key_data['p']),
+                        'q': int(key_data['q'])
+                    }
+                self.public_key = {
+                    'n': self.private_key['n'],
+                    'e': 65537
+                }
                 
                 # Load certificate
                 with open(self.cert_file, 'r') as f:
@@ -66,17 +87,21 @@ class PKIClient:
         return False
         
     def generate_keys(self):
-        """Generate RSA key pair for this client"""
+        """Generate RSA key pair using MANUAL implementation"""
         print(f"\n🔐 Generating NEW RSA key pair for {self.client_id}...")
-        key = RSA.generate(2048)
-        self.private_key = key
-        self.public_key = key.publickey()
+        print("   Using MANUAL RSA implementation (no external crypto library)")
+        
+        keypair = generate_rsa_keypair(bits=1024)
+        self.private_key = keypair['private_key']
+        self.public_key = keypair['public_key']
+        
         print("✅ Keys generated successfully!")
+        print(f"   Key size: {self.public_key['n'].bit_length()} bits")
         
     def register_with_ca(self, force_new=False):
         """Register with CA and get digital certificate"""
         
-        # Try to load existing keys first (unless forced to create new)
+        # Try to load existing keys first
         if not force_new and self.load_keys_and_cert():
             # Get CA public key
             response = requests.get(f"{self.ca_url}/ca/info")
@@ -89,20 +114,23 @@ class PKIClient:
         if not self.public_key:
             self.generate_keys()
         
-        print(f"\n📝 Registering with Certificate Authority...")
+        print(f"\n📝 Registering with Certificate Authority (Manual RSA)...")
         
         # Get CA public key first
         response = requests.get(f"{self.ca_url}/ca/info")
         if response.status_code == 200:
             self.ca_public_key = response.json()['ca_public_key']
+            print("   ✅ CA public key retrieved")
         else:
             print("❌ Failed to get CA public key")
             return False
         
         # Register and get certificate
+        public_key_json = export_public_key(self.public_key)
+        
         data = {
             'client_id': self.client_id,
-            'public_key': self.public_key.export_key().decode('utf-8')
+            'public_key': public_key_json
         }
         
         response = requests.post(f"{self.ca_url}/ca/register", json=data)
@@ -113,6 +141,7 @@ class PKIClient:
             print(f"✅ Certificate issued successfully!")
             print(f"   Certificate ID: {result['certificate_id']}")
             print(f"   Valid until: {self.certificate['expires_at']}")
+            print(f"   Signature: Manual RSA-SHA256")
             
             # Save to disk for future use
             self.save_keys_and_cert()
@@ -139,20 +168,22 @@ class PKIClient:
             return None
     
     def send_secure_message(self, receiver_id, message):
-        """Send encrypted message using PKI"""
+        """Send encrypted AND SIGNED message using Manual RSA"""
         print(f"\n📤 Sending secure message to {receiver_id}...")
+        print("   Using Manual RSA for encryption and signature")
         
         # Get receiver's certificate
         receiver_cert = self.get_receiver_certificate(receiver_id)
         if not receiver_cert:
             return False, "Receiver certificate not found"
         
-        # Prepare request
+        # Prepare request with sender's private key for signing
         data = {
             'text': message,
             'sender_certificate': self.certificate,
             'receiver_certificate': receiver_cert,
-            'ca_public_key': self.ca_public_key
+            'ca_public_key': self.ca_public_key,
+            'sender_private_key': export_private_key(self.private_key)
         }
         
         response = requests.post(
@@ -162,7 +193,7 @@ class PKIClient:
         
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Message encrypted and sent successfully!")
+            print(f"✅ Message encrypted and SIGNED successfully!")
             return True, result
         else:
             error_msg = response.json().get('message', 'Unknown error')
@@ -170,12 +201,13 @@ class PKIClient:
             return False, error_msg
     
     def receive_secure_message(self, message_id):
-        """Receive and decrypt message using private key"""
+        """Receive, decrypt, and VERIFY message signature"""
         print(f"\n📥 Receiving secure message {message_id}...")
+        print("   Using Manual RSA for decryption and verification")
         
         data = {
             'message_id': message_id,
-            'private_key': self.private_key.export_key().decode('utf-8'),
+            'private_key': export_private_key(self.private_key),
             'certificate': self.certificate,
             'ca_public_key': self.ca_public_key
         }
@@ -187,7 +219,61 @@ class PKIClient:
         
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Message decrypted successfully!")
+            print(f"✅ Message decrypted and verified!")
+            return True, result
+        else:
+            error_msg = response.json().get('message', 'Unknown error')
+            print(f"❌ Failed: {error_msg}")
+            return False, error_msg
+
+    def sign_document(self, document):
+        """Sign a document WITHOUT encryption (Manual RSA)"""
+        print(f"\n✍️  Signing document (Manual RSA-SHA256)...")
+        
+        data = {
+            'message': document,
+            'private_key': export_private_key(self.private_key),
+            'certificate': self.certificate,
+            'ca_public_key': self.ca_public_key
+        }
+        
+        response = requests.post(
+            f"{self.des_server_url}/sign",
+            json=data
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"✅ Document signed successfully!")
+            return True, result
+        else:
+            error_msg = response.json().get('message', 'Unknown error')
+            print(f"❌ Failed: {error_msg}")
+            return False, error_msg
+    
+    def verify_document_signature(self, document, signature, signer_id):
+        """Verify a document's signature (Manual RSA)"""
+        print(f"\n🔍 Verifying signature from {signer_id}...")
+        
+        # Get signer's certificate
+        signer_cert = self.get_receiver_certificate(signer_id)
+        if not signer_cert:
+            return False, "Signer certificate not found"
+        
+        data = {
+            'message': document,
+            'signature': signature,
+            'certificate': signer_cert,
+            'ca_public_key': self.ca_public_key
+        }
+        
+        response = requests.post(
+            f"{self.des_server_url}/verify-signature",
+            json=data
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
             return True, result
         else:
             error_msg = response.json().get('message', 'Unknown error')
@@ -197,21 +283,25 @@ class PKIClient:
 def main():
     """Main client interface"""
     print("=" * 60)
-    print("     PKI-ENABLED SECURE MESSAGING CLIENT")
+    print("   PKI-ENABLED SECURE MESSAGING CLIENT")
+    print("   MANUAL RSA IMPLEMENTATION")
+    print("   (No external crypto library)")
     print("=" * 60)
     
     # Initialize client
     print("\n🔧 CLIENT SETUP")
-    print("⚠️  Use localtunnel URLs (e.g., https://ca-server-yourname.loca.lt)\n")
+    print("⚠️  Make sure CA and DES servers are running")
+    print("    (Use certificate_server_manual.py and des_server_manual.py)\n")
+    
     client_id = input("Enter your client ID: ").strip()
-    ca_url = input("CA Server URL: ").strip()
-    des_server_url = input("DES Server URL: ").strip()
+    ca_url = input("CA Server URL (e.g., http://localhost:5001): ").strip()
+    des_server_url = input("DES Server URL (e.g., http://localhost:5002): ").strip()
     
     if not ca_url or not des_server_url:
         print("\n❌ Error: Server URLs are required!")
         return
     
-    client = PKIClient(client_id, ca_url, des_server_url)
+    client = PKIClientManual(client_id, ca_url, des_server_url)
     
     # Register with CA
     if not client.register_with_ca():
@@ -221,15 +311,17 @@ def main():
     # Main menu
     while True:
         print("\n" + "=" * 60)
-        print("MENU:")
-        print("  1. Send Secure Message")
-        print("  2. Receive Secure Message")
-        print("  3. View My Certificate")
-        print("  4. Re-register (Generate New Keys)")
-        print("  5. Exit")
+        print("MENU (Manual RSA Implementation):")
+        print("  1. Send Secure Message (Encrypted + Signed)")
+        print("  2. Receive Secure Message (Decrypt + Verify)")
+        print("  3. Sign Document (No Encryption)")
+        print("  4. Verify Document Signature")
+        print("  5. View My Certificate")
+        print("  6. Re-register (Generate New Keys)")
+        print("  7. Exit")
         print("=" * 60)
         
-        choice = input("\nChoose option (1/2/3/4/5): ").strip()
+        choice = input("\nChoose option (1-7): ").strip()
         
         if choice == '1':
             # SEND MESSAGE
@@ -243,10 +335,11 @@ def main():
                 print(f"\n✅ SUCCESS!")
                 print(f"Message ID: {result['message_id']}")
                 print(f"Receiver: {result['receiver']}")
-                print(f"\n🔐 Security Info:")
+                print(f"\n🔐 Security Info (Manual RSA):")
                 print(f"   - Message encrypted with DES")
-                print(f"   - Session key encrypted with receiver's RSA public key")
-                print(f"   - Your identity verified via CA certificate")
+                print(f"   - Session key encrypted with Manual RSA")
+                print(f"   - Message SIGNED with Manual RSA-SHA256")
+                print(f"   - Identity verified via CA certificate")
                 print(f"\nShare this Message ID with {receiver_id}: {result['message_id']}")
         
         elif choice == '2':
@@ -261,12 +354,58 @@ def main():
                 print(f"From: {result['sender']}")
                 print(f"Message: {result['plaintext']}")
                 print(f"Sent: {result['timestamp']}")
-                print(f"\n🔐 Security Info:")
-                print(f"   - Session key decrypted with your RSA private key")
-                print(f"   - Message decrypted with recovered DES key")
+                print(f"\n🔐 Security Info (Manual RSA):")
+                print(f"   - Session key decrypted with Manual RSA")
+                print(f"   - Message decrypted with DES")
                 print(f"   - Sender verified via CA certificate")
+                if 'signature_verification' in result:
+                    sig_info = result['signature_verification']
+                    print(f"   - Signature: {sig_info['status']}")
+                    if sig_info['valid']:
+                        print(f"   - Non-repudiation: Sender cannot deny this message")
         
         elif choice == '3':
+            # SIGN DOCUMENT
+            print("\n=== SIGN DOCUMENT (Manual RSA-SHA256) ===")
+            document = input("Enter document/message to sign: ").strip()
+            
+            success, result = client.sign_document(document)
+            
+            if success:
+                print(f"\n✅ DOCUMENT SIGNED (Manual RSA)!")
+                print(f"Signer: {result['signer']}")
+                print(f"Algorithm: {result['algorithm']}")
+                print(f"Timestamp: {result['timestamp']}")
+                print(f"\n📋 Signature (share this with verifier):")
+                print(f"{result['signature'][:80]}...")
+                print(f"\n💾 Full signature length: {len(result['signature'])} characters")
+                print(f"\n📝 To verify, the receiver needs:")
+                print(f"   1. The original document")
+                print(f"   2. This signature")
+                print(f"   3. Your client ID: {client.client_id}")
+        
+        elif choice == '4':
+            # VERIFY SIGNATURE
+            print("\n=== VERIFY DOCUMENT SIGNATURE ===")
+            document = input("Enter the original document: ").strip()
+            signature = input("Enter the signature: ").strip()
+            signer_id = input("Signer's Client ID: ").strip()
+            
+            success, result = client.verify_document_signature(document, signature, signer_id)
+            
+            if success:
+                if result['signature_valid']:
+                    print(f"\n✅ SIGNATURE VERIFIED (Manual RSA)!")
+                    print(f"   - Signer: {result['signer']}")
+                    print(f"   - Algorithm: Manual RSA-SHA256")
+                    print(f"   - The document is authentic and unmodified")
+                    print(f"   - Non-repudiation: {result['signer']} cannot deny signing this")
+                else:
+                    print(f"\n❌ SIGNATURE INVALID!")
+                    print(f"   - The document may have been tampered with")
+                    print(f"   - Or the signature doesn't match the signer")
+        
+        elif choice == '5':
             # VIEW CERTIFICATE
             print("\n=== YOUR CERTIFICATE ===")
             if client.certificate:
@@ -275,20 +414,31 @@ def main():
                 print(f"Issued: {client.certificate['issued_at']}")
                 print(f"Expires: {client.certificate['expires_at']}")
                 print(f"Issuer: {client.certificate['issuer']}")
+                print(f"\nPublic Key (n): {str(client.public_key['n'])[:50]}...")
+                print(f"Public Exponent (e): {client.public_key['e']}")
             else:
                 print("No certificate available")
         
-        elif choice == '4':
-            # RE-REGISTER (Generate new keys)
+        elif choice == '6':
+            # RE-REGISTER
             print("\n⚠️  WARNING: This will generate NEW keys and invalidate old messages!")
             confirm = input("Are you sure? (yes/no): ").strip().lower()
             if confirm == 'yes':
+                # Delete old key files
+                if os.path.exists(client.key_file):
+                    os.remove(client.key_file)
+                if os.path.exists(client.cert_file):
+                    os.remove(client.cert_file)
+                
+                client.private_key = None
+                client.public_key = None
+                
                 if client.register_with_ca(force_new=True):
                     print("✅ Re-registered successfully with new keys!")
                 else:
                     print("❌ Re-registration failed!")
         
-        elif choice == '5':
+        elif choice == '7':
             print("\n👋 Goodbye!")
             break
         else:

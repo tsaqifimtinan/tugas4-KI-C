@@ -1,23 +1,6 @@
-"""
-Manual RSA Digital Signature Implementation
--------------------------------------------
-Implements RSA key generation, signing, and verification
-WITHOUT using any external cryptography library.
-
-Components:
-1. Prime number generation (Miller-Rabin primality test)
-2. RSA key pair generation
-3. SHA-256 hash function (manual implementation)
-4. RSA signature creation and verification
-"""
-
 import random
 import json
 import base64
-
-# ========================================
-# SHA-256 MANUAL IMPLEMENTATION
-# ========================================
 
 # SHA-256 constants (first 32 bits of fractional parts of cube roots of first 64 primes)
 SHA256_K = [
@@ -42,15 +25,6 @@ def right_rotate(value, amount):
     return ((value >> amount) | (value << (32 - amount))) & 0xFFFFFFFF
 
 def sha256_manual(message):
-    """
-    Manual SHA-256 implementation
-    
-    Args:
-        message: bytes or string to hash
-    
-    Returns:
-        SHA-256 hash as hex string
-    """
     if isinstance(message, str):
         message = message.encode('utf-8')
     
@@ -130,10 +104,6 @@ def sha256_bytes(message):
 # ========================================
 
 def mod_pow(base, exponent, modulus):
-    """
-    Fast modular exponentiation using square-and-multiply algorithm
-    Computes: (base ^ exponent) mod modulus
-    """
     if modulus == 1:
         return 0
     
@@ -151,16 +121,6 @@ def mod_pow(base, exponent, modulus):
     return result
 
 def miller_rabin_test(n, k=20):
-    """
-    Miller-Rabin primality test
-    
-    Args:
-        n: Number to test
-        k: Number of rounds (more rounds = more accuracy)
-    
-    Returns:
-        True if n is probably prime, False if composite
-    """
     if n < 2:
         return False
     if n == 2 or n == 3:
@@ -226,15 +186,6 @@ def gcd(a, b):
     return a
 
 def generate_rsa_keypair(bits=1024):
-    """
-    Generate RSA key pair manually
-    
-    Args:
-        bits: Key size in bits (default 1024 for faster generation)
-    
-    Returns:
-        Dictionary containing public and private key components
-    """
     print(f"🔐 Generating {bits}-bit RSA key pair...")
     
     # Generate two distinct primes p and q

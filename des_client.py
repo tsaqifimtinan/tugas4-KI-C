@@ -1,16 +1,3 @@
-"""
-PKI-Enabled DES Client with Manual RSA
----------------------------------------
-Secure messaging client using Manual RSA implementation.
-NO external cryptography library used for RSA operations.
-
-Features:
-1. Register with CA to get digital certificate (Manual RSA)
-2. Send encrypted AND SIGNED messages
-3. Receive and VERIFY message signatures
-4. Document signing (without encryption)
-"""
-
 import requests
 import json
 import os
@@ -20,10 +7,6 @@ from rsa_signature import (
     generate_rsa_keypair,
     export_public_key,
     export_private_key,
-    import_public_key,
-    import_private_key,
-    rsa_sign,
-    rsa_verify
 )
 
 class PKIClientManual:
@@ -56,7 +39,6 @@ class PKIClientManual:
             print(f"⚠️  Warning: Could not save keys: {e}")
     
     def load_keys_and_cert(self):
-        """Load existing private key and certificate from files"""
         try:
             if os.path.exists(self.key_file) and os.path.exists(self.cert_file):
                 # Load private key
@@ -87,7 +69,6 @@ class PKIClientManual:
         return False
         
     def generate_keys(self):
-        """Generate RSA key pair using MANUAL implementation"""
         print(f"\n🔐 Generating NEW RSA key pair for {self.client_id}...")
         print("   Using MANUAL RSA implementation (no external crypto library)")
         

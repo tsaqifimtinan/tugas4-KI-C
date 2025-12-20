@@ -1,16 +1,3 @@
-"""
-Certificate Authority (CA) Server - Manual RSA Implementation
--------------------------------------------------------------
-Implements Public Key Infrastructure (PKI) for secure key distribution
-WITHOUT using external cryptography libraries.
-
-Features:
-- Manual RSA key generation
-- Manual SHA-256 hashing  
-- Manual digital signatures
-- Certificate issuance and verification
-"""
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
@@ -20,22 +7,16 @@ from datetime import datetime, timedelta
 # Import manual RSA implementation
 from rsa_signature import (
     generate_rsa_keypair,
-    rsa_sign,
-    rsa_verify,
     export_public_key,
-    export_private_key,
-    import_public_key,
-    import_private_key,
     sign_certificate_data,
     verify_certificate_signature,
-    sha256_manual
 )
 
 app = Flask(__name__)
 CORS(app)
 
 # ========================================
-# CA KEY PAIR GENERATION (Manual RSA)
+# CA KEY PAIR GENERATION
 # ========================================
 print("="*60)
 print("Generating Certificate Authority (CA) key pair...")
@@ -62,13 +43,6 @@ client_keys_db = {}
 def create_certificate(client_id, client_public_key_json, validity_days=365):
     """
     Create a digital certificate for a client
-    
-    Certificate contains:
-    - Certificate ID
-    - Client ID (subject)
-    - Client's public key
-    - Validity period
-    - CA's digital signature (using manual RSA)
     """
     cert_id = str(uuid.uuid4())[:12]
     issued_at = datetime.now()
@@ -127,8 +101,6 @@ def home():
 def ca_info():
     """
     GET CA PUBLIC KEY
-    -----------------
-    Returns the CA's public key for signature verification
     """
     return jsonify({
         'status': 'success',
@@ -142,15 +114,6 @@ def ca_info():
 def register_client():
     """
     CLIENT REGISTRATION
-    -------------------
-    Process:
-    1. Client generates RSA key pair (using manual implementation)
-    2. Client sends public key + identity to CA
-    3. CA creates digital certificate
-    4. CA signs certificate with CA's private key (manual RSA signature)
-    5. CA returns certificate to client
-    
-    The certificate proves ownership of the public key
     """
     try:
         data = request.get_json()
@@ -223,15 +186,6 @@ def register_client():
 def verify_certificate():
     """
     CERTIFICATE VERIFICATION
-    ------------------------
-    Process:
-    1. Receive certificate from client
-    2. Extract certificate data and signature
-    3. Verify signature using CA's public key (manual RSA verify)
-    4. Check expiration date
-    5. Return verification result
-    
-    This proves the certificate was issued by the CA
     """
     try:
         data = request.get_json()
@@ -290,9 +244,6 @@ def verify_certificate():
 def get_certificate():
     """
     GET CERTIFICATE BY CLIENT ID
-    ----------------------------
-    Allows clients to retrieve other clients' certificates
-    for secure communication
     """
     try:
         data = request.get_json()

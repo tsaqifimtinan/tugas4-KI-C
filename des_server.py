@@ -1,21 +1,7 @@
-"""
-DES Server with Manual RSA Implementation
-------------------------------------------
-Secure message encryption using DES with RSA-based key distribution.
-All RSA operations are implemented manually WITHOUT external crypto libraries.
-
-Features:
-- DES encryption for messages (existing implementation)
-- Manual RSA for key exchange
-- Manual RSA digital signatures for non-repudiation
-- Certificate-based authentication
-"""
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import uuid
 import random
-import json
 from datetime import datetime
 
 # Import manual RSA implementation
@@ -26,9 +12,7 @@ from rsa_signature import (
     rsa_decrypt,
     import_public_key,
     import_private_key,
-    export_public_key,
     verify_certificate_signature,
-    sha256_manual
 )
 
 # ========================================
@@ -285,7 +269,7 @@ CORS(app)
 messages_store = {}
 
 # ========================================
-# PKI HELPER FUNCTIONS (Manual RSA)
+# PKI HELPER FUNCTIONS
 # ========================================
 
 def verify_cert_signature(certificate, ca_public_key_json):

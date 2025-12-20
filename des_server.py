@@ -273,7 +273,7 @@ messages_store = {}
 # ========================================
 
 def verify_cert_signature(certificate, ca_public_key_json):
-    """Verify certificate was signed by CA using manual RSA"""
+    """Verify certificate was signed by CA using RSA"""
     try:
         ca_public_key = import_public_key(ca_public_key_json)
         return verify_certificate_signature(certificate, ca_public_key)
@@ -282,22 +282,22 @@ def verify_cert_signature(certificate, ca_public_key_json):
         return False
 
 def encrypt_with_public_key_manual(data, public_key_json):
-    """Encrypt data using manual RSA public key"""
+    """Encrypt data using RSA public key"""
     public_key = import_public_key(public_key_json)
     return rsa_encrypt(data, public_key)
 
 def decrypt_with_private_key_manual(ciphertext, private_key_json):
-    """Decrypt data using manual RSA private key"""
+    """Decrypt data using RSA private key"""
     private_key = import_private_key(private_key_json)
     return rsa_decrypt(ciphertext, private_key)
 
 def sign_message_manual(message, private_key_json):
-    """Sign message using manual RSA"""
+    """Sign message using RSA"""
     private_key = import_private_key(private_key_json)
     return rsa_sign(message, private_key)
 
 def verify_signature_manual(message, signature, public_key_json):
-    """Verify signature using manual RSA"""
+    """Verify signature using RSA"""
     public_key = import_public_key(public_key_json)
     return rsa_verify(message, signature, public_key)
 
@@ -309,9 +309,9 @@ def verify_signature_manual(message, signature, public_key_json):
 def home():
     return jsonify({
         'status': 'success',
-        'service': 'DES Server with Manual RSA Implementation',
-        'description': 'Secure message encryption using DES with manual RSA key distribution',
-        'implementation': 'NO external crypto library - all RSA operations manual',
+        'service': 'DES Server with RSA Implementation',
+        'description': 'Secure message encryption using DES with RSA key distribution',
+        'implementation': 'NO external crypto library - all RSA operations',
         'endpoints': {
             '/': 'GET - Server info',
             '/send-secure': 'POST - Encrypt and SIGN message with PKI',
@@ -322,9 +322,9 @@ def home():
         },
         'security': {
             'encryption': 'DES for message content',
-            'key_distribution': 'Manual RSA encryption',
-            'authentication': 'CA-signed certificates (manual RSA)',
-            'digital_signature': 'Manual RSA-SHA256 for non-repudiation'
+            'key_distribution': 'RSA encryption',
+            'authentication': 'CA-signed certificates (RSA)',
+            'digital_signature': 'RSA-SHA256 for non-repudiation'
         }
     })
 
@@ -332,23 +332,6 @@ def home():
 def send_secure_message():
     """
     SECURE MESSAGE SENDING WITH PKI AND DIGITAL SIGNATURE
-    ------------------------------------------------------
-    Process:
-    1. Sender provides: plaintext, sender certificate, receiver certificate, sender private key
-    2. Verify both certificates with CA (manual RSA)
-    3. Generate random DES session key
-    4. Encrypt message with DES using session key
-    5. Encrypt DES key with receiver's RSA public key (manual RSA)
-    6. SIGN the message with sender's RSA private key (manual RSA - NON-REPUDIATION)
-    7. Store encrypted message with encrypted key and signature
-    8. Return message_id to sender
-    
-    Security Benefits:
-    - Only receiver can decrypt the DES key
-    - Message authenticity verified via certificates
-    - Session key per message (perfect forward secrecy)
-    - DIGITAL SIGNATURE proves sender identity (non-repudiation)
-    - ALL RSA operations done manually
     """
     try:
         data = request.get_json()
@@ -367,20 +350,20 @@ def send_secure_message():
         ca_public_key_json = data['ca_public_key']
         sender_private_key_json = data['sender_private_key']
         
-        # STEP 1: Verify certificates (using manual RSA)
-        print(f"\n🔐 Verifying certificates (Manual RSA)...")
+        # STEP 1: Verify certificates (using RSA)
+        print(f"\n🔐 Verifying certificates (RSA)...")
         
         if not verify_cert_signature(sender_cert, ca_public_key_json):
             return jsonify({
                 'status': 'error',
-                'message': 'Invalid sender certificate (manual RSA verification failed)'
+                'message': 'Invalid sender certificate (RSA verification failed)'
             }), 400
         print("   ✅ Sender certificate verified")
         
         if not verify_cert_signature(receiver_cert, ca_public_key_json):
             return jsonify({
                 'status': 'error',
-                'message': 'Invalid receiver certificate (manual RSA verification failed)'
+                'message': 'Invalid receiver certificate (RSA verification failed)'
             }), 400
         print("   ✅ Receiver certificate verified")
         
@@ -402,12 +385,12 @@ def send_secure_message():
             encrypted_blocks.append(cipher_block)
         
         # STEP 5: Encrypt DES key with receiver's RSA public key (MANUAL)
-        print(f"\n🔐 Encrypting session key (Manual RSA)...")
+        print(f"\n🔐 Encrypting session key (RSA)...")
         encrypted_des_key = encrypt_with_public_key_manual(des_key, receiver_public_key_json)
         print(f"   ✅ Session key encrypted")
 
         # STEP 6: Create digital signature (MANUAL RSA)
-        print(f"\n✍️  Creating digital signature (Manual RSA-SHA256)...")
+        print(f"\n✍️  Creating digital signature (RSA-SHA256)...")
         message_signature = sign_message_manual(plaintext, sender_private_key_json)
         print(f"   ✅ Message signed (signature length: {len(message_signature)} chars)")
         
@@ -433,14 +416,14 @@ def send_secure_message():
         print(f"   • From: {sender_cert['subject']}")
         print(f"   • To: {receiver_cert['subject']}")
         print(f"   • Message Length: {original_length} chars")
-        print(f"   • Digitally Signed: ✅ (Manual RSA)")
+        print(f"   • Digitally Signed: (RSA)")
         print(f"{'='*60}\n")
         
         ciphertext = ''.join(encrypted_blocks)
         
         return jsonify({
             'status': 'success',
-            'message': 'Message encrypted, signed, and secured (Manual RSA)',
+            'message': 'Message encrypted, signed, and secured (RSA)',
             'message_id': message_id,
             'sender': sender_cert['subject'],
             'receiver': receiver_cert['subject'],
@@ -449,9 +432,9 @@ def send_secure_message():
             'message_signature': message_signature,
             'security_info': {
                 'message_encryption': 'DES with random session key',
-                'key_distribution': 'Manual RSA-encrypted session key',
-                'authentication': 'CA-signed certificates (Manual RSA)',
-                'non_repudiation': 'Manual RSA-SHA256 digital signature'
+                'key_distribution': 'RSA-encrypted session key',
+                'authentication': 'CA-signed certificates (RSA)',
+                'non_repudiation': 'RSA-SHA256 digital signature'
             },
             'instruction': f'Share message_id with {receiver_cert["subject"]}: {message_id}'
         })
@@ -470,21 +453,6 @@ def send_secure_message():
 def receive_secure_message():
     """
     SECURE MESSAGE RECEIVING WITH PKI AND SIGNATURE VERIFICATION
-    -------------------------------------------------------------
-    Process:
-    1. Receiver provides: message_id, private key, certificate
-    2. Retrieve encrypted message from storage
-    3. Verify receiver's certificate (manual RSA)
-    4. Decrypt DES session key using receiver's RSA private key (manual RSA)
-    5. Decrypt message using recovered DES key
-    6. VERIFY sender's digital signature (manual RSA)
-    7. Return plaintext with verification status
-    
-    Security Benefits:
-    - Only intended receiver can decrypt
-    - Sender identity verified
-    - NON-REPUDIATION: Sender cannot deny sending the message
-    - ALL RSA operations done manually
     """
     try:
         data = request.get_json()
@@ -511,7 +479,7 @@ def receive_secure_message():
         
         msg = messages_store[message_id]
         
-        # STEP 2: Verify receiver's certificate (manual RSA)
+        # STEP 2: Verify receiver's certificate (RSA)
         if not verify_cert_signature(receiver_cert, ca_public_key_json):
             return jsonify({
                 'status': 'error',
@@ -525,8 +493,8 @@ def receive_secure_message():
                 'message': f"Access denied. Message is for '{msg['receiver']}'"
             }), 403
         
-        # STEP 4: Decrypt DES session key with manual RSA
-        print(f"\n🔑 Decrypting DES Session Key (Manual RSA)...")
+        # STEP 4: Decrypt DES session key with RSA
+        print(f"\n🔑 Decrypting DES Session Key (RSA)...")
         try:
             des_key = decrypt_with_private_key_manual(msg['encrypted_key'], receiver_private_key_json)
             print(f"   ✅ Session key decrypted: {des_key}")
@@ -548,8 +516,8 @@ def receive_secure_message():
         plaintext = hex_blocks_to_text(decrypted_blocks, msg['original_length'])
         ciphertext = ''.join(msg['encrypted_blocks'])
         
-        # STEP 6: Verify sender's digital signature (Manual RSA)
-        print(f"\n✍️  Verifying digital signature (Manual RSA-SHA256)...")
+        # STEP 6: Verify sender's digital signature (RSA)
+        print(f"\n✍️  Verifying digital signature (RSA-SHA256)...")
         signature_valid = False
         signature_status = "No signature found"
         
@@ -561,7 +529,7 @@ def receive_secure_message():
                 sender_public_key_json
             )
             if signature_valid:
-                signature_status = "✅ VERIFIED - Sender identity confirmed (Manual RSA)"
+                signature_status = "✅ VERIFIED - Sender identity confirmed (RSA)"
                 print(f"   {signature_status}")
             else:
                 signature_status = "❌ INVALID - Signature verification failed!"
@@ -582,12 +550,12 @@ def receive_secure_message():
                 'valid': signature_valid,
                 'status': signature_status,
                 'non_repudiation': signature_valid,
-                'algorithm': 'Manual RSA-SHA256'
+                'algorithm': 'RSA-SHA256'
             },
             'security_info': {
-                'session_key_decrypted': 'Using Manual RSA',
+                'session_key_decrypted': 'Using RSA',
                 'message_decrypted': 'Using DES',
-                'sender_verified': 'Via CA certificate (Manual RSA)',
+                'sender_verified': 'Via CA certificate (RSA)',
                 'signature_verified': signature_valid
             }
         })
@@ -603,9 +571,7 @@ def receive_secure_message():
 @app.route('/sign', methods=['POST'])
 def sign_document():
     """
-    STANDALONE DIGITAL SIGNATURE (Manual RSA)
-    -----------------------------------------
-    Sign any document without encryption.
+    STANDALONE DIGITAL SIGNATURE (RSA)
     """
     try:
         data = request.get_json()
@@ -629,12 +595,12 @@ def sign_document():
                 'message': 'Invalid certificate'
             }), 400
         
-        # Create signature (Manual RSA)
+        # Create signature (RSA)
         signature = sign_message_manual(message, private_key_json)
         
         return jsonify({
             'status': 'success',
-            'message': 'Document signed successfully (Manual RSA)',
+            'message': 'Document signed successfully (RSA)',
             'original_message': message,
             'signature': signature,
             'signer': certificate['subject'],
@@ -651,9 +617,7 @@ def sign_document():
 @app.route('/verify-signature', methods=['POST'])
 def verify_signature_endpoint():
     """
-    STANDALONE SIGNATURE VERIFICATION (Manual RSA)
-    -----------------------------------------------
-    Verify a digital signature on any document.
+    STANDALONE SIGNATURE VERIFICATION (RSA)
     """
     try:
         data = request.get_json()
@@ -678,19 +642,19 @@ def verify_signature_endpoint():
                 'signature_valid': False
             }), 400
         
-        # Verify signature (Manual RSA)
+        # Verify signature (RSA)
         public_key_json = certificate['public_key']
         is_valid = verify_signature_manual(message, signature, public_key_json)
         
         return jsonify({
             'status': 'success' if is_valid else 'failed',
             'signature_valid': is_valid,
-            'message': 'Signature is valid (Manual RSA)' if is_valid else 'Signature verification failed',
+            'message': 'Signature is valid (RSA)' if is_valid else 'Signature verification failed',
             'signer': certificate['subject'],
             'verification_details': {
                 'certificate_valid': True,
                 'signature_matches': is_valid,
-                'algorithm': 'Manual RSA-SHA256'
+                'algorithm': 'RSA-SHA256'
             }
         })
     
@@ -735,15 +699,15 @@ def reset_server():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("DES SERVER WITH MANUAL RSA IMPLEMENTATION")
+    print("DES SERVER WITH RSA IMPLEMENTATION")
     print("NO EXTERNAL CRYPTO LIBRARY USED")
     print("=" * 60)
     print("\n🔐 Security Features:")
     print("   ✓ Message encryption: DES algorithm")
-    print("   ✓ Key distribution: Manual RSA encryption")
-    print("   ✓ Authentication: CA-signed certificates (Manual RSA)")
-    print("   ✓ Digital Signature: Manual RSA-SHA256 (Non-repudiation)")
-    print("   ✓ Hash function: Manual SHA-256")
+    print("   ✓ Key distribution: RSA encryption")
+    print("   ✓ Authentication: CA-signed certificates (RSA)")
+    print("   ✓ Digital Signature: RSA-SHA256 (Non-repudiation)")
+    print("   ✓ Hash function: SHA-256")
     print("\n📋 Available Endpoints:")
     print("   GET  /              - Server info")
     print("   POST /send-secure   - Send encrypted+signed message")

@@ -4,7 +4,7 @@ import json
 import uuid
 from datetime import datetime, timedelta
 
-# Import manual RSA implementation
+# Import RSA implementation
 from rsa_signature import (
     generate_rsa_keypair,
     export_public_key,
@@ -20,7 +20,7 @@ CORS(app)
 # ========================================
 print("="*60)
 print("Generating Certificate Authority (CA) key pair...")
-print("Using MANUAL RSA implementation (no external crypto library)")
+print("Using RSA implementation")
 print("="*60)
 
 ca_keypair = generate_rsa_keypair(bits=1024)  # 1024-bit for reasonable speed
@@ -55,10 +55,10 @@ def create_certificate(client_id, client_public_key_json, validity_days=365):
         'public_key': client_public_key_json,
         'issued_at': issued_at.isoformat(),
         'expires_at': expires_at.isoformat(),
-        'issuer': 'Manual RSA Certificate Authority'
+        'issuer': 'SA Certificate Authority'
     }
     
-    # Create signature over certificate data (using manual RSA)
+    # Create signature over certificate data (using RSA)
     signature = sign_certificate_data(cert_data, ca_private_key)
     
     # Complete certificate with signature
@@ -80,11 +80,11 @@ def home():
     return jsonify({
         'status': 'success',
         'service': 'Certificate Authority (CA) Server',
-        'implementation': 'MANUAL RSA - No external crypto library',
+        'implementation': 'RSA',
         'description': 'Issues and verifies digital certificates for secure key distribution',
         'security': {
-            'key_generation': 'Manual RSA with Miller-Rabin primality test',
-            'hashing': 'Manual SHA-256 implementation',
+            'key_generation': 'RSA with Miller-Rabin primality test',
+            'hashing': 'SHA-256 implementation',
             'signatures': 'RSA-SHA256 with PKCS#1 v1.5 padding'
         },
         'endpoints': {
@@ -106,7 +106,7 @@ def ca_info():
         'status': 'success',
         'ca_public_key': export_public_key(ca_public_key),
         'key_size': ca_public_key['n'].bit_length(),
-        'algorithm': 'Manual RSA with SHA-256 signatures',
+        'algorithm': 'RSA with SHA-256 signatures',
         'implementation': 'No external crypto library used'
     })
 
@@ -151,7 +151,7 @@ def register_client():
                         'reused': True
                     })
         
-        # Create certificate (with manual RSA signature)
+        # Create certificate (with RSA signature)
         cert_id, certificate = create_certificate(client_id, client_public_key_json)
         
         # Store certificate and public key
@@ -160,15 +160,15 @@ def register_client():
         
         print(f"\n📜 Certificate issued for '{client_id}'")
         print(f"   Certificate ID: {cert_id}")
-        print(f"   Signed with: Manual RSA-SHA256")
+        print(f"   Signed with: RSA-SHA256")
         
         return jsonify({
             'status': 'success',
-            'message': 'Certificate issued successfully (Manual RSA signature)',
+            'message': 'Certificate issued successfully (RSA signature)',
             'certificate_id': cert_id,
             'certificate': certificate,
             'security_info': {
-                'signature_algorithm': 'Manual RSA-SHA256',
+                'signature_algorithm': 'RSA-SHA256',
                 'no_external_crypto': True
             },
             'instruction': 'Save this certificate. You will need it for secure communication.'
@@ -207,7 +207,7 @@ def verify_certificate():
                 'message': 'Invalid certificate format'
             }), 400
         
-        # Verify signature (using manual RSA)
+        # Verify signature (using RSA)
         is_valid = verify_certificate_signature(cert, ca_public_key)
         
         if not is_valid:
@@ -223,14 +223,14 @@ def verify_certificate():
         
         return jsonify({
             'status': 'success',
-            'message': 'Certificate verified successfully (Manual RSA)',
+            'message': 'Certificate verified successfully (RSA)',
             'valid': True,
             'certificate_id': cert['certificate_id'],
             'subject': cert['subject'],
             'expires_at': cert['expires_at'],
             'expired': is_expired,
             'issued_by': cert['issuer'],
-            'verification_method': 'Manual RSA-SHA256'
+            'verification_method': 'RSA-SHA256'
         })
     
     except Exception as e:
@@ -298,7 +298,7 @@ def list_certificates():
         'status': 'success',
         'total_certificates': len(certs_list),
         'certificates': certs_list,
-        'signature_algorithm': 'Manual RSA-SHA256'
+        'signature_algorithm': 'RSA-SHA256'
     })
 
 @app.route('/ca/reset', methods=['POST'])
@@ -322,11 +322,11 @@ def reset_ca():
 if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("CERTIFICATE AUTHORITY (CA) SERVER")
-    print("MANUAL RSA IMPLEMENTATION - No External Crypto Library")
+    print("SA IMPLEMENTATION")
     print("=" * 60)
     print("\n🔐 CA Key Pair Information:")
-    print(f"   Algorithm: Manual RSA-{ca_public_key['n'].bit_length()}")
-    print(f"   Signature: Manual SHA-256 + RSA PKCS#1 v1.5")
+    print(f"   Algorithm: RSA-{ca_public_key['n'].bit_length()}")
+    print(f"   Signature: SHA-256 + RSA PKCS#1 v1.5")
     print(f"   Key Generation: Miller-Rabin primality test")
     print("\n📋 Available Endpoints:")
     print("   GET  /              - Server info")

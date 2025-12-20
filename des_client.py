@@ -2,7 +2,7 @@ import requests
 import json
 import os
 
-# Import manual RSA implementation
+# Import RSA implementation
 from rsa_signature import (
     generate_rsa_keypair,
     export_public_key,
@@ -70,7 +70,6 @@ class PKIClientManual:
         
     def generate_keys(self):
         print(f"\n🔐 Generating NEW RSA key pair for {self.client_id}...")
-        print("   Using MANUAL RSA implementation (no external crypto library)")
         
         keypair = generate_rsa_keypair(bits=1024)
         self.private_key = keypair['private_key']
@@ -95,7 +94,7 @@ class PKIClientManual:
         if not self.public_key:
             self.generate_keys()
         
-        print(f"\n📝 Registering with Certificate Authority (Manual RSA)...")
+        print(f"\n📝 Registering with Certificate Authority ...")
         
         # Get CA public key first
         response = requests.get(f"{self.ca_url}/ca/info")
@@ -122,7 +121,7 @@ class PKIClientManual:
             print(f"✅ Certificate issued successfully!")
             print(f"   Certificate ID: {result['certificate_id']}")
             print(f"   Valid until: {self.certificate['expires_at']}")
-            print(f"   Signature: Manual RSA-SHA256")
+            print(f"   Signature: RSA-SHA256")
             
             # Save to disk for future use
             self.save_keys_and_cert()
@@ -149,9 +148,8 @@ class PKIClientManual:
             return None
     
     def send_secure_message(self, receiver_id, message):
-        """Send encrypted AND SIGNED message using Manual RSA"""
+        """Send encrypted AND SIGNED message using RSA"""
         print(f"\n📤 Sending secure message to {receiver_id}...")
-        print("   Using Manual RSA for encryption and signature")
         
         # Get receiver's certificate
         receiver_cert = self.get_receiver_certificate(receiver_id)
@@ -184,7 +182,6 @@ class PKIClientManual:
     def receive_secure_message(self, message_id):
         """Receive, decrypt, and VERIFY message signature"""
         print(f"\n📥 Receiving secure message {message_id}...")
-        print("   Using Manual RSA for decryption and verification")
         
         data = {
             'message_id': message_id,
@@ -200,16 +197,16 @@ class PKIClientManual:
         
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Message decrypted and verified!")
+            print(f"Message decrypted and verified!")
             return True, result
         else:
             error_msg = response.json().get('message', 'Unknown error')
-            print(f"❌ Failed: {error_msg}")
+            print(f"Failed: {error_msg}")
             return False, error_msg
 
     def sign_document(self, document):
-        """Sign a document WITHOUT encryption (Manual RSA)"""
-        print(f"\n✍️  Signing document (Manual RSA-SHA256)...")
+        """Sign a document WITHOUT encryption (RSA)"""
+        print(f"\nSigning document (RSA-SHA256)...")
         
         data = {
             'message': document,
@@ -225,15 +222,15 @@ class PKIClientManual:
         
         if response.status_code == 200:
             result = response.json()
-            print(f"✅ Document signed successfully!")
+            print(f"Document signed successfully!")
             return True, result
         else:
             error_msg = response.json().get('message', 'Unknown error')
-            print(f"❌ Failed: {error_msg}")
+            print(f"Failed: {error_msg}")
             return False, error_msg
     
     def verify_document_signature(self, document, signature, signer_id):
-        """Verify a document's signature (Manual RSA)"""
+        """Verify a document's signature (RSA)"""
         print(f"\n🔍 Verifying signature from {signer_id}...")
         
         # Get signer's certificate
@@ -263,36 +260,28 @@ class PKIClientManual:
 
 def main():
     """Main client interface"""
-    print("=" * 60)
-    print("   PKI-ENABLED SECURE MESSAGING CLIENT")
-    print("   MANUAL RSA IMPLEMENTATION")
-    print("   (No external crypto library)")
-    print("=" * 60)
-    
     # Initialize client
-    print("\n🔧 CLIENT SETUP")
-    print("⚠️  Make sure CA and DES servers are running")
-    print("    (Use certificate_server_manual.py and des_server_manual.py)\n")
+    print("\nCLIENT SETUP")
     
     client_id = input("Enter your client ID: ").strip()
-    ca_url = input("CA Server URL (e.g., http://localhost:5001): ").strip()
-    des_server_url = input("DES Server URL (e.g., http://localhost:5002): ").strip()
+    ca_url = input("CA Server URL (e.g. http://localhost:5001): ").strip()
+    des_server_url = input("DES Server URL (e.g. http://localhost:5002): ").strip()
     
     if not ca_url or not des_server_url:
-        print("\n❌ Error: Server URLs are required!")
+        print("\nError: Server URLs are required!")
         return
     
     client = PKIClientManual(client_id, ca_url, des_server_url)
     
     # Register with CA
     if not client.register_with_ca():
-        print("\n❌ Failed to register with CA. Exiting...")
+        print("\nFailed to register with CA. Exiting...")
         return
     
     # Main menu
     while True:
         print("\n" + "=" * 60)
-        print("MENU (Manual RSA Implementation):")
+        print("MENU (RSA Implementation):")
         print("  1. Send Secure Message (Encrypted + Signed)")
         print("  2. Receive Secure Message (Decrypt + Verify)")
         print("  3. Sign Document (No Encryption)")
@@ -313,13 +302,13 @@ def main():
             success, result = client.send_secure_message(receiver_id, message)
             
             if success:
-                print(f"\n✅ SUCCESS!")
+                print(f"\nSUCCESS!")
                 print(f"Message ID: {result['message_id']}")
                 print(f"Receiver: {result['receiver']}")
-                print(f"\n🔐 Security Info (Manual RSA):")
+                print(f"\n🔐 Security Info (RSA):")
                 print(f"   - Message encrypted with DES")
-                print(f"   - Session key encrypted with Manual RSA")
-                print(f"   - Message SIGNED with Manual RSA-SHA256")
+                print(f"   - Session key encrypted with RSA")
+                print(f"   - Message SIGNED with RSA-SHA256")
                 print(f"   - Identity verified via CA certificate")
                 print(f"\nShare this Message ID with {receiver_id}: {result['message_id']}")
         
@@ -335,8 +324,8 @@ def main():
                 print(f"From: {result['sender']}")
                 print(f"Message: {result['plaintext']}")
                 print(f"Sent: {result['timestamp']}")
-                print(f"\n🔐 Security Info (Manual RSA):")
-                print(f"   - Session key decrypted with Manual RSA")
+                print(f"\n🔐 Security Info (RSA):")
+                print(f"   - Session key decrypted with RSA")
                 print(f"   - Message decrypted with DES")
                 print(f"   - Sender verified via CA certificate")
                 if 'signature_verification' in result:
@@ -347,13 +336,13 @@ def main():
         
         elif choice == '3':
             # SIGN DOCUMENT
-            print("\n=== SIGN DOCUMENT (Manual RSA-SHA256) ===")
+            print("\n=== SIGN DOCUMENT (RSA-SHA256) ===")
             document = input("Enter document/message to sign: ").strip()
             
             success, result = client.sign_document(document)
             
             if success:
-                print(f"\n✅ DOCUMENT SIGNED (Manual RSA)!")
+                print(f"\n✅ DOCUMENT SIGNED (RSA)!")
                 print(f"Signer: {result['signer']}")
                 print(f"Algorithm: {result['algorithm']}")
                 print(f"Timestamp: {result['timestamp']}")
@@ -460,9 +449,9 @@ def main():
             
             if success:
                 if result['signature_valid']:
-                    print(f"\n✅ SIGNATURE VERIFIED (Manual RSA)!")
+                    print(f"\n✅ SIGNATURE VERIFIED!")
                     print(f"   - Signer: {result['signer']}")
-                    print(f"   - Algorithm: Manual RSA-SHA256")
+                    print(f"   - Algorithm: RSA-SHA256")
                     print(f"   - The document is authentic and unmodified")
                     print(f"   - Non-repudiation: {result['signer']} cannot deny signing this")
                 else:

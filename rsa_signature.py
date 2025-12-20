@@ -246,14 +246,6 @@ def bytes_to_int(b):
 def pkcs1_v15_pad(message_hash, key_size_bytes):
     """
     PKCS#1 v1.5 padding for signature
-    
-    Format: 0x00 0x01 [0xFF padding] 0x00 [DigestInfo]
-    
-    DigestInfo for SHA-256:
-    SEQUENCE {
-        SEQUENCE { OID sha256, NULL }
-        OCTET STRING hash
-    }
     """
     # SHA-256 DigestInfo prefix (DER encoded)
     sha256_digest_info = bytes([
@@ -332,18 +324,6 @@ def pkcs1_v15_unpad(padded_bytes):
 def rsa_sign(message, private_key):
     """
     Create RSA digital signature
-    
-    Process:
-    1. Hash message with SHA-256
-    2. Apply PKCS#1 v1.5 padding
-    3. Sign with private key: signature = padded^d mod n
-    
-    Args:
-        message: String or bytes to sign
-        private_key: Dictionary with 'n' and 'd'
-    
-    Returns:
-        Base64-encoded signature
     """
     # Step 1: Hash the message
     message_hash = sha256_manual(message)
@@ -370,21 +350,6 @@ def rsa_sign(message, private_key):
 def rsa_verify(message, signature_b64, public_key):
     """
     Verify RSA digital signature
-    
-    Process:
-    1. Decode signature
-    2. Recover padded hash: padded = signature^e mod n
-    3. Remove padding and extract hash
-    4. Hash original message
-    5. Compare hashes
-    
-    Args:
-        message: Original message (string or bytes)
-        signature_b64: Base64-encoded signature
-        public_key: Dictionary with 'n' and 'e'
-    
-    Returns:
-        True if signature is valid, False otherwise
     """
     try:
         # Step 1: Decode signature
@@ -468,13 +433,6 @@ def import_private_key(key_json):
 def rsa_encrypt(plaintext, public_key):
     """
     RSA encryption with PKCS#1 v1.5 padding (for small data like DES keys)
-    
-    Args:
-        plaintext: String to encrypt (should be small, like a key)
-        public_key: Dictionary with 'n' and 'e'
-    
-    Returns:
-        Base64-encoded ciphertext
     """
     n = public_key['n']
     e = public_key['e']
@@ -511,13 +469,6 @@ def rsa_encrypt(plaintext, public_key):
 def rsa_decrypt(ciphertext_b64, private_key):
     """
     RSA decryption with PKCS#1 v1.5 padding removal
-    
-    Args:
-        ciphertext_b64: Base64-encoded ciphertext
-        private_key: Dictionary with 'n' and 'd'
-    
-    Returns:
-        Decrypted plaintext as string
     """
     n = private_key['n']
     d = private_key['d']
@@ -553,13 +504,6 @@ def rsa_decrypt(ciphertext_b64, private_key):
 def sign_certificate_data(cert_data, ca_private_key):
     """
     Sign certificate data with CA's private key
-    
-    Args:
-        cert_data: Dictionary of certificate fields
-        ca_private_key: CA's private key dictionary
-    
-    Returns:
-        Base64-encoded signature
     """
     # Serialize certificate data deterministically
     data_to_sign = json.dumps(cert_data, sort_keys=True)
@@ -570,13 +514,6 @@ def sign_certificate_data(cert_data, ca_private_key):
 def verify_certificate_signature(certificate, ca_public_key):
     """
     Verify certificate signature
-    
-    Args:
-        certificate: Certificate dictionary with 'ca_signature'
-        ca_public_key: CA's public key dictionary
-    
-    Returns:
-        True if signature is valid
     """
     # Extract signature
     signature = certificate['ca_signature']
